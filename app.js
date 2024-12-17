@@ -156,7 +156,7 @@ const handleUpdate = (ws, docId, userId, data) => {
     wss.clients.forEach((client) => {
         if (
             client.readyState === WebSocket.OPEN &&
-            // Exclude the sender
+            client !== ws &&
             sockets.includes(client) // Check if the client belongs to the room
         ) {
             client.send(
