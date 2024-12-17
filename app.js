@@ -12,8 +12,7 @@ const docRouter = require('./routers/docRouter');
 
 const app = express()
 
-app.use(cors({
-    origin: 'http://localhost:5173', // Replace with your frontend's URL
+app.use(cors({// Replace with your frontend's URL
     credentials: true, // Allow cookies to be sent with requests
 }));
 app.use(express.json({ limit: '10mb' })); // Increase JSON payload limit
