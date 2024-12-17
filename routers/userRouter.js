@@ -125,5 +125,25 @@ userRouter.get('/me',verifyToken, async (req,res) => {
   }
 })
 
+userRouter.put('/update',verifyToken,async (req,res) => {
+  const {id} = req.user
+  const {name,profileImage} = req.body
+  try{
+    const user = await prisma.user.update({
+      where : {
+        id
+      },
+      data : {
+        name,
+        profileImage
+      }
+    })
+    res.status(200).json({message:"User updated successfully"})
+  }catch(error){
+    console.log(error)
+    res.status(500).json({error:"Internal Server Error"})
+  }
+})
+
 
 module.exports  = userRouter;

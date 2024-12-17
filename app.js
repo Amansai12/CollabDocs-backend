@@ -30,17 +30,20 @@ const prisma = new PrismaClient();
 prisma.$connect()
   .then(() => console.log('Database connected successfully'))
   .catch((error) => {
+    //console.log(error)
     console.error('Error connecting to database:', "Something went wrong");
     
 });
 
 const rooms = new Map()
-let sharedLock = false
-let sharedSocket = null
+const locks = new Map()
+
 const handleJoin = (ws,docId, userId, name) => {
     if (!rooms.has(docId)) {
       rooms.set(docId, []);
+      locks.set(docId,{sharedLock:false,sharedSocket:null});
     }
+    let {sharedLock,sharedSocket} = locks.get(docId)
     let roomUsers = rooms.get(docId);
     const newuser = {socket:ws,userId:userId,name,};
     const actualusers = roomUsers.filter((user) => user.userId !== userId);
@@ -85,27 +88,27 @@ const handleJoin = (ws,docId, userId, name) => {
             );
         }
     });
-    console.log(`Room ${docId}:`, rooms.get(docId)); 
+    //console.log(`Room ${docId}:`, rooms.get(docId)); 
 };
 const handleDisconnect = (ws, docId, userId,name) => {
     if (!rooms.has(docId)) return; // If the room doesn't exist, exit
   
     const roomUsers = rooms.get(docId);
     const updatedUsers = roomUsers.filter((user) => user.userId !== userId); // Remove the user
+    let {sharedLock,sharedSocket} = locks.get(docId)
   
     if (updatedUsers.length === 0) {
       rooms.delete(docId); // Remove the room if no users are left
-      console.log(`Room ${docId} deleted`);
+      locks.delete(docId)
     } else {
       rooms.set(docId, updatedUsers); // Update the room with remaining users
       console.log(`Room ${docId}:`, rooms.get(docId));
     }
 
-    const sockets = updatedUsers.map((user) => user.socket)
+    const sockets = updatedUsers?.map((user) => user.socket)
     const user =  roomUsers.find((user) => user.userId === userId);
     if(sharedLock && user.socket === sharedSocket){
-        sharedLock = false
-        sharedSocket = null
+        locks.set(docId,{sharedLock:false,sharedSocket:null});
     }
 
     // Broadcast the data to all users in the room except the sender
@@ -134,7 +137,7 @@ const handleDisconnect = (ws, docId, userId,name) => {
         }
     });
   
-    console.log(`User ${userId} disconnected from Room ${docId}`);
+    //console.log(`User ${userId} disconnected from Room ${docId}`);
 };
 
 
@@ -178,8 +181,10 @@ const handleLock = (ws, docId, userId, lock) => {
     const sockets = roomUsers.map((user) => user.socket)
     const user =  roomUsers.find((user) => user.userId === userId);
     // Broadcast the data to all users in the room except the sender
+    let {sharedLock,sharedSocket} = locks.get(docId)    
     sharedLock = true
     sharedSocket = user.socket
+    locks.set(docId,{sharedLock:true,sharedSocket:user.socket})
     wss.clients.forEach((client) => {
         if (
             client.readyState === WebSocket.OPEN &&
@@ -206,8 +211,7 @@ const releaseLock = (ws, docId, userId) => {
     const sockets = roomUsers.map((user) => user.socket)
     const user =  roomUsers.find((user) => user.userId === userId);
     // Broadcast the data to all users in the room except the sender
-    sharedLock = false
-    sharedSocket = null
+    locks.set(docId,{sharedLock:false,sharedSocket:null})
     wss.clients.forEach((client) => {
         if (
             client.readyState === WebSocket.OPEN &&
@@ -226,6 +230,86 @@ const releaseLock = (ws, docId, userId) => {
     });
 }
 
+const handleVersion = (ws, docId, userId, version,name) => {
+    if (!rooms.has(docId)) {
+        console.log(`Room ${docId} does not exist`);
+        return; // Exit if the room doesn't exist
+    }
+    const roomUsers = rooms.get(docId); // Get the list of users in the room
+    const sockets = roomUsers.map((user) => user.socket)
+    const user =  roomUsers.find((user) => user.userId === userId);
+    // Broadcast the data to all users in the room except the sender
+    wss.clients.forEach((client) => {
+        if (
+            client.readyState === WebSocket.OPEN &&
+            client !== user.socket &&// Exclude the sender
+            sockets.includes(client) // Check if the client belongs to the room
+        ) {
+            client.send(
+                JSON.stringify({
+                    type: 'version',
+                    docId: docId,
+                    userId: userId,
+                    version : version,
+                    name : name // Include the data to be shared
+                })
+            );
+        }
+    });
+}
+const handleDeleteVersion = (ws, docId, userId, version,name) => {
+    if (!rooms.has(docId)) {
+        console.log(`Room ${docId} does not exist`);
+        return; // Exit if the room doesn't exist
+    }
+    const roomUsers = rooms.get(docId); // Get the list of users in the room
+    const sockets = roomUsers.map((user) => user.socket)
+    const user =  roomUsers.find((user) => user.userId === userId);
+    // Broadcast the data to all users in the room except the sender
+    wss.clients.forEach((client) => {
+        if (
+            client.readyState === WebSocket.OPEN &&
+            client !== user.socket &&// Exclude the sender
+            sockets.includes(client) // Check if the client belongs to the room
+        ) {
+            client.send(
+                JSON.stringify({
+                    type: 'delete-version',
+                    docId: docId,
+                    userId: userId,
+                    versionId : version,
+                    name : name // Include the data to be shared
+                })
+            );
+        }
+    });
+}
+const handleSavedData = (ws, docId, userId, name) => {
+    if (!rooms.has(docId)) {
+        console.log(`Room ${docId} does not exist`);
+        return; // Exit if the room doesn't exist
+    }
+    const roomUsers = rooms.get(docId); // Get the list of users in the room
+    const sockets = roomUsers.map((user) => user.socket)
+    const user =  roomUsers.find((user) => user.userId === userId);
+    // Broadcast the data to all users in the room except the sender
+    wss.clients.forEach((client) => {
+        if (
+            client.readyState === WebSocket.OPEN &&
+            client !== user.socket &&// Exclude the sender
+            sockets.includes(client) // Check if the client belongs to the room
+        ) {
+            client.send(
+                JSON.stringify({
+                    type: 'saved-data',
+                    docId: docId,
+                    userId: userId,
+                    name  // Include the data to be shared
+                })
+            );
+        }
+    });
+}
 wss.on('connection',(ws) => {
     console.log("User is connected")
 
@@ -249,6 +333,16 @@ wss.on('connection',(ws) => {
                 break
             case 'close':
                 handleDisconnect(ws,docId,userId)
+                break
+            case 'update-version':
+                handleVersion(ws,docId,userId,JSON.parse(data).version,JSON.parse(data).name)
+                break;
+            case 'delete-version':
+                handleDeleteVersion(ws,docId,userId,JSON.parse(data).versionId,JSON.parse(data).name)
+                break
+            case 'saved-data':
+                handleSavedData(ws,docId,userId,JSON.parse(data).name)
+                break
             default:
                 console.log("Undefined Message")
         }
