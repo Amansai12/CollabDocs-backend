@@ -335,6 +335,36 @@ const handleUnsaved = (ws, docId, userId) => {
         }
     });
 }
+const handleRollback = (ws, docId, userId,data, name,rollBackId) => {
+    if (!rooms.has(docId)) {
+        console.log(`Room ${docId} does not exist`);
+        return; // Exit if the room doesn't exist
+    }
+    const roomUsers = rooms.get(docId); // Get the list of users in the room
+    const sockets = roomUsers.map((user) => user.socket)
+    const user =  roomUsers.find((user) => user.userId === userId);
+    // Broadcast the data to all users in the room except the sender
+    wss.clients.forEach((client) => {
+        if (
+            client.readyState === WebSocket.OPEN &&
+            client !== user.socket &&// Exclude the sender
+            sockets.includes(client) // Check if the client belongs to the room
+        ) {
+            client.send(
+                JSON.stringify({
+                    type: 'rollback',
+                    docId: docId,
+                    userId: userId,
+                    data,
+                    name,
+                    rollBackId 
+                })
+            );
+        }
+    });
+}
+
+
 wss.on('connection',(ws) => {
     console.log("User is connected")
 
@@ -370,6 +400,9 @@ wss.on('connection',(ws) => {
                 break
             case 'update-unsaved':
                 handleUnsaved(ws,docId,userId);
+                break
+            case 'rolledback':
+                handleRollback(ws,docId,userId,JSON.parse(data).data,JSON.parse(data).name,JSON.parse(data).rollBackId)
                 break
             default:
                 console.log("Undefined Message")
