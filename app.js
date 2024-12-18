@@ -310,6 +310,31 @@ const handleSavedData = (ws, docId, userId, name) => {
         }
     });
 }
+const handleUnsaved = (ws, docId, userId) => {
+    if (!rooms.has(docId)) {
+        console.log(`Room ${docId} does not exist`);
+        return; // Exit if the room doesn't exist
+    }
+    const roomUsers = rooms.get(docId); // Get the list of users in the room
+    const sockets = roomUsers.map((user) => user.socket)
+    const user =  roomUsers.find((user) => user.userId === userId);
+    // Broadcast the data to all users in the room except the sender
+    wss.clients.forEach((client) => {
+        if (
+            client.readyState === WebSocket.OPEN &&
+            sockets.includes(client) // Check if the client belongs to the room
+        ) {
+            client.send(
+                JSON.stringify({
+                    type: 'update-unsaved',
+                    docId: docId,
+                    userId: userId,
+                    unsaved :true // Include the data to be shared
+                })
+            );
+        }
+    });
+}
 wss.on('connection',(ws) => {
     console.log("User is connected")
 
@@ -342,6 +367,9 @@ wss.on('connection',(ws) => {
                 break
             case 'saved-data':
                 handleSavedData(ws,docId,userId,JSON.parse(data).name)
+                break
+            case 'update-unsaved':
+                handleUnsaved(ws,docId,userId);
                 break
             default:
                 console.log("Undefined Message")
