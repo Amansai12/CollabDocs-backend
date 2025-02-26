@@ -16,7 +16,7 @@ app.use(cors({
     origin: process.env.FRONTEND_URL, // Replace with your frontend's URL
     credentials: true, // Allow cookies to be sent with requests
 }));
-app.use(express.json({ limit: '10mb' })); // Increase JSON payload limit
+app.use(express.json({ limit: '10mb' })); 
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cookieParser())
 
@@ -37,6 +37,7 @@ prisma.$connect()
 
 const rooms = new Map()
 const locks = new Map()
+const Messages = new Map()
 
 const handleJoin = (ws,docId, userId, name) => {
     if (!rooms.has(docId)) {
@@ -69,7 +70,8 @@ const handleJoin = (ws,docId, userId, name) => {
                     userId: userId,
                     name : name,
                     users : roomUsers,
-                    lock : sharedLock // Include the data to be shared
+                    lock : sharedLock,
+                    messages : Messages.get(docId)
                 })
             );
             
@@ -100,6 +102,7 @@ const handleDisconnect = (ws, docId, userId,name) => {
     if (updatedUsers.length === 0) {
       rooms.delete(docId); // Remove the room if no users are left
       locks.delete(docId)
+      Messages.delete(docId)
     } else {
       rooms.set(docId, updatedUsers); // Update the room with remaining users
       console.log(`Room ${docId}:`, rooms.get(docId));
@@ -363,7 +366,35 @@ const handleRollback = (ws, docId, userId,data, name,rollBackId) => {
         }
     });
 }
+const handleChatMessage = (ws,docId,userId,name,message,time) => {
+    if (!rooms.has(docId)) {
+        console.log(`Room ${docId} does not exist`);
+        return; // Exit if the room doesn't exist
+    }
 
+    const roomUsers = rooms.get(docId); 
+    const sockets = roomUsers.map((user) => user.socket)
+    const user =  roomUsers.find((user) => user.userId === userId);
+
+    
+    wss.clients.forEach((client) => {
+        if (
+            client.readyState === WebSocket.OPEN &&
+            sockets.includes(client) 
+        ) {
+            client.send(
+                JSON.stringify({
+                    type: 'update-ChatData',
+                    docId: docId,
+                    userId: client == ws ? 'user' : userId,
+                    message : message,
+                    name : name,
+                    time : time
+                })
+            );
+        }
+    });
+}
 
 wss.on('connection',(ws) => {
     console.log("User is connected")
@@ -404,6 +435,9 @@ wss.on('connection',(ws) => {
             case 'rolledback':
                 handleRollback(ws,docId,userId,JSON.parse(data).data,JSON.parse(data).name,JSON.parse(data).rollBackId)
                 break
+            case 'chatMessage':
+                
+                handleChatMessage(ws,docId,userId,JSON.parse(data).name,JSON.parse(data).message,JSON.parse(data).time)
             default:
                 console.log("Undefined Message")
         }
