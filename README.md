@@ -8,7 +8,7 @@ A powerful full-stack application built with **Node.js, Express, Prisma, and Pos
 
 ### **1️⃣ Clone the Repository**
 ```sh
-git clone https://github.com/your-username/your-repo.git
+git clone https://github.com/Amansai12/CollabDocs-backend.git
 cd your-repo
 ```
 
