@@ -144,31 +144,60 @@ const handleDisconnect = (ws, docId, userId,name) => {
 };
 
 
-const handleUpdate = (ws, docId, userId, data) => {
-    if (!rooms.has(docId)) {
-        console.log(`Room ${docId} does not exist`);
-        return; // Exit if the room doesn't exist
-    }
+// const handleUpdate = (ws, docId, userId, data) => {
+//     if (!rooms.has(docId)) {
+//         console.log(`Room ${docId} does not exist`);
+//         return; // Exit if the room doesn't exist
+//     }
 
-    const roomUsers = rooms.get(docId); // Get the list of users in the room
-    const sockets = roomUsers.map((user) => user.socket)
-    const user =  roomUsers.find((user) => user.userId === userId);
+//     const roomUsers = rooms.get(docId); // Get the list of users in the room
+//     const sockets = roomUsers.map((user) => user.socket)
+//     const user =  roomUsers.find((user) => user.userId === userId);
 
     
-    // Broadcast the data to all users in the room except the sender
+//     // Broadcast the data to all users in the room except the sender
+//     wss.clients.forEach((client) => {
+//         if (
+//             client.readyState === WebSocket.OPEN &&
+//             client !== ws &&
+//             sockets.includes(client) // Check if the client belongs to the room
+//         ) {
+//             client.send(
+//                 JSON.stringify({
+//                     type: 'update-data',
+//                     docId: docId,
+//                     userId: userId,
+//                     name : user.name,
+//                     data: data, // Include the data to be shared
+//                 })
+//             );
+//         }
+//     });
+// };
+
+const handleUpdate = (ws, docId, userId, delta) => {  // ✅ Expecting `delta` instead of full data
+    if (!rooms.has(docId)) {
+        console.log(`Room ${docId} does not exist`);
+        return;
+    }
+
+    const roomUsers = rooms.get(docId);
+    const sockets = roomUsers.map((user) => user.socket);
+    const user = roomUsers.find((user) => user.userId === userId);
+
     wss.clients.forEach((client) => {
         if (
             client.readyState === WebSocket.OPEN &&
             client !== ws &&
-            sockets.includes(client) // Check if the client belongs to the room
+            sockets.includes(client)
         ) {
             client.send(
                 JSON.stringify({
                     type: 'update-data',
                     docId: docId,
                     userId: userId,
-                    name : user.name,
-                    data: data, // Include the data to be shared
+                    name: user.name,
+                    data: delta,  // ✅ Send Delta instead of full document
                 })
             );
         }
@@ -409,7 +438,7 @@ wss.on('connection',(ws) => {
                 handleDisconnect(ws,docId,userId,JSON.parse(data).name)
                 break
             case 'update-data':
-                handleUpdate(ws,docId,userId,JSON.parse(data).data)
+                handleUpdate(ws,docId,userId,JSON.parse(data).delta)
                 break
             case 'lock':
                 handleLock(ws,docId,userId,JSON.parse(data).lock)
